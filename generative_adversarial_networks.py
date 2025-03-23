@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 
 
 from torchvision.datasets import ImageFolder 
-from torchvision.utils import make_grid 
+from torchvision.utils import make_grid, save_image
 import torchvision.transforms as T 
 
 import matplotlib.pyplot as plt
@@ -203,4 +203,108 @@ fake_images = generator(xb)
 print(xb.shape)
 print(fake_images.shape) 
 show_images(fake_images)
-plt.show() 
+
+
+""""As one might expect, the output from the generator is basically random noise, 
+since we haven't trained it yet. 
+
+Let's now move the generator to the chosen device.""" 
+generator = to_device(generator, device) 
+
+"""Discriminator Training 
+Since the discriminator is a binary classification model, 
+we can use the binary cross entropy loss function to quantify how well it is able 
+to differentiate between reala and generated images.""" 
+
+def train_discriminator(real_images: torch.Tensor, opt_d: torch.optim.Optimizer): 
+     # Clear discriminator gradients 
+     opt_d.zero_grad()
+
+     # Pass the real images through the discriminator 
+     real_preds = discriminator(real_images) 
+     real_targets = torch.ones(real_images.size(0), 1, device=device) 
+     real_loss = F.binary_cross_entropy(real_preds, real_targets)  
+     real_score = torch.mean(real_preds).item()
+
+     # Generate fake images 
+     latent = torch.randn(BATCH_SIZE, latent_size, 1 , 1, device=device)
+     fake_images = generator(latent) 
+
+     # Pass fake images through discriminator 
+     fake_targets = torch.zeros(fake_images.size(0), 1 , device=device)
+     fake_preds = discriminator(fake_images) 
+     fake_loss = F.binary_cross_entropy(fake_preds, fake_targets) 
+     fake_score = torch.mean(fake_preds).item() 
+
+     # Update disciminator
+     loss = real_loss + fake_loss 
+     loss.backward()  
+     opt_d.step() 
+     return loss.item(), real_score, fake_score
+
+"""Here are the steps involved in training the discriminator.
+* We expect the discriminator to ouput 1 if the images are picked from the real MNIST dataset, 
+and 0 if it is generated using the generator network.
+* We first pass a batch of real images, and compute the loss, setting the target labels to 1. 
+* We then pass a batch of fake images (generated using the generator) pass them into the discriminator 
+and compute the loss, settting the target to 0. 
+* Finally we add the two losses and use the overall loss to perform gradient descent to adjust the weights. 
+"""
+
+"""Generator Training 
+Since the outputs of the generator are images, it's obvious how to train the generator. 
+This is where we employ the rather elegant trick, which is to use the discriminator as a 
+part of the loss function. Here's how it works: 
+* We generate a batch of images using the generator, pass the input into the discriminator.
+* We calculate the loss by setting the target labels to 1 i.e real. We do this because 
+the genrator's objective is to "fool" the discriminator. 
+* We use the loss to perform gradient descent i.e change the weights of the generator, so it 
+gets better at generating real-like images to "fool" the discriminator.
+
+Here's what this looks like""" 
+
+def train_generator(opt_g:torch.optim.Optimizer):  
+    # Clear the generator gradients 
+    opt_g.zero_grad() 
+
+    # Generator fake images 
+    latent = torch.randn(BATCH_SIZE, latent_size, 1, 1, device=device) 
+    fake_images = generator(latent) 
+
+    # Try to fool the discriminator 
+    preds = discriminator(fake_images)
+    targets = torch.ones(BATCH_SIZE, 1, device=device) 
+    loss = F.binary_cross_entropy(preds, targets) 
+
+    # Update generator weights 
+    loss.backward() 
+    opt_g.step()  
+
+
+    return loss.item()
+
+"""Let's create a directory where we can save intermediate outputs from the 
+generator to visually inspect the progress of the model. We'll also create a helper function to export 
+generated images."""  
+gen_dir = Path("generated/") 
+gen_dir.mkdir(parents=True, exist_ok=True) 
+
+def save_samples(index, latent_tensors, show=True): 
+    fake_images = generator(latent_tensors)
+    fake_fname = f"generated-images{index:0=4d}.png"  
+    fake_fpath = gen_dir/fake_fname
+    save_image(denorm(fake_images), fake_fpath ) 
+    print("Saving")
+    if show:
+        fig, ax = plt.subplots(figsize=(8, 8)) 
+        ax.set_xticks([]); ax.set_yticks([]) 
+        ax.imshow(make_grid(fake_images.cpu().detach(), nrow=8).permute(1, 2, 0)) 
+
+"""We use a fixed set of input vectors to the generator to see how the individual 
+generted images evolve over time as we train the model. Let's save one set of images before we 
+start training our model.
+"""
+fixed_latent = torch.randn(64, latent_size, 1, 1, device= device) 
+save_samples(1,fixed_latent )  
+plt.show()
+"""Full Training """
