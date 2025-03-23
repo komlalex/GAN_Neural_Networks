@@ -147,6 +147,59 @@ being real i.e. picked from the origininal dataset"""
 
 discriminator = to_device(discriminator, device) 
 
-print(discriminator)
+"""Generator Network
+The input to the generator network is typically a vector or matrix of random numbers 
+(referred to as a latent tensor) which is used as a seed for generating an image. 
+The generator will convert a latent tenstor of shape (128, 1, 1) into an image tensor of shape 3x28x28. To 
+achieve this, we'll use the ConTranspose2d layer from PyTorch, which performs a transposed convolution.
+"""
+latent_size = 128 
 
+generator = nn.Sequential(
+    # in: latent_size x 1 x 1 
 
+    nn.ConvTranspose2d(latent_size, 512, kernel_size=4, stride=1, padding=0, bias=False), 
+    nn.BatchNorm2d(512), 
+    nn.ReLU(True), 
+    # out: 512 x 4 x 4  
+
+    nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1, bias=False),
+    nn.BatchNorm2d(256), 
+    nn.ReLU(True), 
+    # out: 128 x 16 x 16 
+
+    nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1, bias=False), 
+    nn.BatchNorm2d(128), 
+    nn.ReLU(True),  
+    # out: 128 x 16 x 16 
+
+    nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1, bias=False), 
+    nn.BatchNorm2d(64), 
+    nn.ReLU(True), 
+    # out: 64 x 32 x 32 
+
+    nn.ConvTranspose2d(64, 3, kernel_size=4, stride=2, padding=1, bias=False), 
+    nn.Tanh()
+    # out: 3 x 64 x 64 
+)
+
+"""We use the TanH activation function for the output layer of the generator. 
+
+"The ReLU activation (Nair & Hinton, 2010) is used in the generator with the exception 
+of the output layer which uses the Tanh function. We observed that using a bounded activation allowed 
+the model to learn more quickly to saturate and cover the color space of the training distribution. 
+Within the discriminator we found the leaky rectified activation (Maas et al, 2013) 
+(Xu et al. 2015) worked well, especially for higher resolution modelling"
+"""
+
+"""Note that since the outputs of the TanH activation lie in the range [-1, 1], we have applied 
+the similar transformation to the images in the training dataset. Let's generate some outputs 
+using the generator and and view them as images by transforming and denormaliziing
+"""
+
+xb = torch.randn(BATCH_SIZE, latent_size, 1, 1) # random latent tensors 
+
+fake_images = generator(xb) 
+print(fake_images.shape) 
+show_images(fake_images)
+plt.show()
