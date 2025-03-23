@@ -200,6 +200,7 @@ using the generator and and view them as images by transforming and denormalizii
 xb = torch.randn(BATCH_SIZE, latent_size, 1, 1) # random latent tensors 
 
 fake_images = generator(xb) 
+print(xb.shape)
 print(fake_images.shape) 
 show_images(fake_images)
-plt.show()
+plt.show() 
