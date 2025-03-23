@@ -20,7 +20,13 @@ a few epochs, then train the generator for a few epochs, and repeat. This way
 both the generator and the discriminator get better after doing their jobs. 
 We'll use the Anime Face Dataset, which consists of over 63,000 cropped anime faces. Not
 that generative modelling is an unsupervised learning task, so the images do 
-not have any labels."""
+not have any labels.""" 
+
+
+"""Let's load this dataset using the ImageFolder class from torchvision. We will also
+resize and crop the images to 64x64, normalize the pixel values with a mean & standard deviation of 0.5 for 
+each channel. This will ensure that pixel values are in the range(-1, 1), which is more convenenient for 
+training the discriminator. We will also create a data loader to load the data in batches"""
 TRAIN_DIR = Path("data")
 IMAGE_SIZE = 64 
 BATCH_SIZE = 128 
@@ -45,16 +51,19 @@ def show_images(images, nmax=64):
     fig, ax = plt.subplots(figsize=(8, 8))
     ax.set_xticks([]); ax.set_yticks([]) 
     ax.imshow(make_grid( denorm(images.detach()[:nmax]), nrow=8).permute(1, 2, 0))
-    plt.title("Sample Batch")
 
 def show_batch(dl, nmax=64): 
     for images, _ in dl:
-        print(images.shape)
         show_images(images, nmax)
         break 
 
 show_batch(train_dl)
 
+
+""""Using a GPU
+To seamlessly use a GPU, if one is available, we define a couple of helper functions (get_default_device & to_device) 
+and a helper class DeviceDataLoader to move our model & data to the GPU, if one is available.
+"""
 
 
 def get_default_device(): 
@@ -88,11 +97,56 @@ class DeviceDataLoader():
         return len(self.dl) 
 
 device = get_default_device() 
-print(device)
 
-plt.show()
+train_dl = DeviceDataLoader(train_dl, device)
 
+"""The Discriminator
+The discriminator takes an image as an input, and tries to classify it as "real" or "generated". 
+In this sense, it's any other neural network. We'll use a convolutional neural network (CNN) which outputs 
+a single number for every image. We'll use stride 2 to progressively reduce the size of the output feature 
+map""" 
 
+discriminator = nn.Sequential(
+    # in: 3 x 64 x 64 
+    nn.Conv2d(3, 64, kernel_size=4, stride=2, padding=1, bias=False), 
+    nn.BatchNorm2d(64), 
+    nn.LeakyReLU(0.2, inplace=True), 
+    # out: 64 x 32 x 32 
 
+    nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1, bias=False), 
+    nn.BatchNorm2d(256), 
+    nn.LeakyReLU(0.2 ,inplace=True),
+    # out: 128 x 16 x 16
+
+    nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1, bias=False), 
+    nn.BatchNorm2d(256), 
+    nn.LeakyReLU(0.2, inplace=True),
+    # out: 256 x 8 x 8 
+
+    nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1, bias=False), 
+    nn.BatchNorm2d(512), 
+    nn.LeakyReLU(0.2, inplace=True),
+    # out: 512 x 4 x 4  
+
+    nn.Conv2d(512, 1, kernel_size=4, stride=1, padding=0, bias=False),
+    # out: 1 x 1 x 1
+
+    nn.Flatten(), 
+    nn.Sigmoid()
+)
+
+"""The LeakyReLU 
+is different from the regular ReLU as it allows the pass of a 
+small gradient for negative values. As a result, it makes the gradient from the 
+discriminator flow stronger in the generator. Instead of passing a gradient (slope)
+of 0 in the back-drop, it passes a small negative gradient.""" 
+
+"""Just like any other binary classification model, the output of the discriminator is a
+single number between 0 and 1, which can be interpreted as the probability of the input 
+being real i.e. picked from the origininal dataset""" 
+
+discriminator = to_device(discriminator, device) 
+
+print(discriminator)
 
 
